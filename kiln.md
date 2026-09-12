@@ -115,7 +115,7 @@ route POST "/itens/:id":
 |----------|------------|
 | caminho não registrado | 404 |
 | caminho existe, verbo não | **405** com `Allow` |
-| `OPTIONS` com `Kiln.cors()` | responde o preflight |
+| `OPTIONS` com `Kiln.cors()` | responde o preflight, e põe `Access-Control-Allow-Origin` na resposta real — inclusive nas de erro |
 | erro na rota | 500, detalhe no terminal, servidor de pé |
 | JSON quebrado no corpo | chega como texto — a rota decide se é 400 |
 | corpo grande demais | 413 antes de ler tudo na memória |
