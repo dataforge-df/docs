@@ -4,6 +4,43 @@ Auditoria completa do repositório, feita rodando o código, não lendo apenas.
 Auditoria inicial em 2026-09-06 (3.0.0 → 3.1.0); segunda rodada em
 2026-09-07 implementando o roadmap 4.x (3.1.0 → 4.0.0).
 
+> **As tabelas das seções 1 e 4 são a foto de 2026-09-07**, e as mantive
+> como registro do que foi medido então. O estado de hoje está na seção
+> 0, abaixo — comparar as duas é a única forma de ver o que cresceu, e
+> reescrever a foto antiga apagaria isso.
+
+---
+
+## 0. Estado de hoje (2026-09-12)
+
+Medido rodando, como o resto deste documento.
+
+| | 2026-09-07 | hoje |
+|---|---|---|
+| testes unitários | 240 | **2.302** |
+| exercícios | 180 | **230** |
+| exemplos | 42 | **44** |
+| módulos da stdlib | 20 | **39** |
+| símbolos da stdlib | 674 | **1.348** |
+| funções embutidas | 225 | **228** |
+| comandos da CLI | 23 | **45** |
+| blocos de doc verificados | 94 | **653** |
+
+| Componente | Linhas | O que mudou desde então |
+|---|---|---|
+| `lexer.py` | 796 | interpolação, `//` vs `~/` |
+| `parser.py` | 3.177 | Kiln, Vitrine, padrões, caminhos relativos |
+| `ast_nodes.py` | 1.017 | — |
+| `interpreter.py` | 6.218 | métodos mágicos, MRO C3, ponte, cauda |
+| `typechecker.py` | 2.068 | membros entre arquivos, ciclos, supressão |
+| `compilador.py` | 587 | **novo** — a árvore vira fechamentos |
+| `depurador.py` | 390 | **novo** — `dataforge debug` |
+| `dap.py` | 792 | **novo** — o depurador no editor |
+| `cobertura.py` | 243 | **novo** — quais linhas os testes rodaram |
+| `superficie.py` | 461 | **novo** — o que um `.df` oferece |
+| `resolucao.py` | 261 | **novo** — onde mora o módulo de um `adopt` |
+| `stdlib/` | 32.559 | 19 módulos novos, Kiln, Vitrine, Forge |
+
 ---
 
 ## 1. Veredito: é uma linguagem de programação?
@@ -616,12 +653,24 @@ O que resta, em ordem de impacto.
 ### Web
 
 - ~~**Framework de dashboards**~~ — **feito**. `Arcane.Vitrine`: um programa
-  de cima para baixo vira uma página web, com 105 símbolos, gráficos em SVG
+  de cima para baixo vira uma página web, com 113 símbolos, gráficos em SVG
   escritos no servidor, estado por sessão, cache com TTL e LRU, autenticação,
   temas e uma sonda que testa sem navegador. Roda sobre o Kiln.
-- **WebSocket no Kiln** — o `http.server` do Python não tem. Enquanto isso, o
-  "tempo real" da Vitrine é `V.atualizar_a_cada(n)`, por pergunta e não por
-  empurrão. É suficiente para painel, e insuficiente para chat.
+- ~~**WebSocket no Kiln**~~ — **feito**. `kiln_tempo_real.py` fala o RFC 6455
+  à mão sobre o socket que o `http.server` entrega depois do `Upgrade`:
+  `Kiln.ws` registra a rota, `Kiln.sala` agrupa conexões, e há SSE
+  (`Kiln.sse`) e streaming de resposta (`Kiln.stream`) pelo mesmo caminho.
+  31 testes falam o protocolo por socket, para pegar erro de enquadramento.
+  A Vitrine continua com `V.atualizar_a_cada(n)`: o modelo dela é reexecutar
+  o programa inteiro, e empurrar um pedaço de tela exigiria saber qual pedaço
+  mudou — exatamente o que ela existe para não precisar saber.
+- **HTTP/2 e TLS no Kiln** — o `http.server` do Python não tem, e
+  implementá-los seria reescrever um servidor de produção. Em produção
+  pública, nginx ou Caddy na frente.
+- **Depurador de mais de uma thread** — `dataforge debug` e `dataforge dap`
+  param, mostram e andam, mas sombreiam `execute` no interpretador inteiro:
+  parar uma thread de `thread`/`parallel` sem parar as outras exigiria estado
+  por thread no depurador. Falta também breakpoint condicional e watchpoint.
 - **Sessão compartilhada entre processos** — hoje a sessão da Vitrine vive na
   memória do processo, o que limita a aplicação a um processo com proxy na
   frente. Escalar horizontalmente exige um armazenamento comum primeiro.
