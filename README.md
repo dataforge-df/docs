@@ -18,6 +18,11 @@ curl -fsSL https://dataforge-lang.vercel.app/instalar.sh | sh
 dataforge repl
 ```
 
+> Os arquivos desta pasta são **espelhados** de `doc/` no
+> [repositório principal](https://github.com/estevam5s/DataForge)
+> por `scripts/sincronizar_docs_org.py`. Uma correção feita aqui
+> é perdida na próxima sincronização — mande o PR para lá.
+
 ---
 
 ## Por onde começar
@@ -34,6 +39,7 @@ dataforge repl
 | testar | [testes.md](testes.md) |
 | entender como o interpretador funciona | [arquitetura.md](arquitetura.md) |
 | saber o que falta | [roadmap.md](roadmap.md) |
+| saber o que nao vai quebrar | [estabilidade.md](estabilidade.md) |
 
 ---
 
