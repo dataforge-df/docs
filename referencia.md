@@ -22,6 +22,23 @@ Arquivos `.df` são UTF-8. O fim de linha encerra uma instrução; não existe `
    de várias linhas */
 ```
 
+`//` é comentário **exceto** quando seguido de dígito, `(`, ou de uma
+chamada/índice/membro: ali ele é divisão inteira. `x // 2` divide;
+`x // nota` é comentário. Para dividir sem ambiguidade, `~/`.
+
+#### Silenciar uma regra do analisador
+
+```dataforge
+// df: permitir point-inalcancavel
+```
+
+Silencia aquela regra na linha em que está e na de baixo — que é onde o
+comentário cabe num `match` longo. A regra tem de ser **nomeada** (o
+`code` do diagnóstico); várias cabem numa linha, separadas por vírgula.
+
+Um `permitir` sem nome de regra silenciaria o erro seguinte, que
+ninguém pediu para esconder, e por isso não existe.
+
 ### 1.3 Indentação
 
 - Blocos abrem com `:` e são delimitados por indentação.
@@ -642,8 +659,35 @@ O nome ligado pelo `handle` expõe:
 | `.type` | nome do tipo, ex. `"RuntimeError"` |
 | `.message` | a mensagem |
 | `.line`, `.column` | posição de origem |
+| `.pilha` (ou `.stack`) | os quadros de chamada, como dado |
+| `.nota`, `.dica`, `.codigo`, `.doc` | o que a mensagem trazia além do texto |
+| `.campos`, `.caminho`, `.corpo`, `.tabela`, `.coluna`… | os extras do erro específico |
 
 Ele se comporta como texto ao ser concatenado ou comparado com uma `String`.
+
+#### A pilha, como dado
+
+`.pilha` é um `Cluster` de vaults, **do mais externo para o mais
+interno** — a ordem em que se lê "quem chamou quem", e a mesma em que o
+stack trace desenha.
+
+```dataforge
+monitor:
+    relatorio([])
+handle Error as e:
+    cycle q in e.pilha:
+        out $"{q["name"]}  {q["file"]}:{q["line"]}"
+```
+
+Cada quadro traz `name`, `line`, `column` e `file`. Numa ação chamada de
+cinco lugares, *"deu erro em `media()`"* não ajuda: o que importa é qual
+das cinco chamadas — e o `file` é o que faz isso servir num projeto de
+200 arquivos.
+
+**Duas linhas diferentes, e as duas estão certas**: `e.line` é onde o
+erro **nasceu**; `quadro["line"]` é onde a **chamada** foi feita. Para
+consertar você quer a primeira; para entender por que aquela ação
+recebeu aquele argumento, a segunda.
 
 ### 8.3 Hierarquia de erros
 
@@ -795,6 +839,27 @@ x not in colecao
 
 Funciona em `Cluster` (elemento), `Vault` (chave), `String` (subtexto), `Record`
 (nome de campo) e `Stream` (consome).
+
+#### Apagar uma chave
+
+`remove` e `pop` valem para os dois, e o segundo argumento muda de sentido:
+num `Cluster` é o **valor**, num `Vault` é a **chave**.
+
+```dataforge
+v := {"a": 1, "b": 2}
+remove(v, "a")            // apaga NO LUGAR; devolve o vault
+assert v is {"b": 2}
+remove(v, "nao-existe")   // silencioso: quem remove quer o estado final
+assert pop(v, "b") is 2   // pop DEVOLVE o valor, e por isso exige a chave
+assert v is {}
+```
+
+`pop` de uma chave ausente levanta `KeyError`. A assimetria é de propósito:
+devolver `void` calado esconderia a diferença entre "a chave valia `void`" e
+"a chave não estava lá". `remove` não devolve valor, e aí já não importa.
+
+O método `v.delete("a")` faz o mesmo que `remove(v, "a")`. `omit(v, "a")`
+devolve uma **cópia** sem a chave, e não mexe no original.
 
 ### 11.5.5 Spread e rest
 
