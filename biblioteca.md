@@ -47,6 +47,7 @@ Cada módulo tem um **nome curto** equivalente (`adopt Math as M` funciona igual
 | [`Arcane.Stream`](#arcanestream) | `Stream / Corrente` | 17 | Streaming: tópicos, partições, offsets, grupos de consumo e janelas de tempo. |
 | [`Arcane.Observar`](#arcaneobservar) | `Observar / Observe` | 19 | Observabilidade: métricas com percentil, tracing aninhado e linhagem de dados. |
 | [`Arcane.Lago`](#arcanelago) | `Lago / Parquet` | 18 | Data Lake: Parquet nativo, partições Hive, camadas bronze/prata/ouro e compactação. |
+| [`Arcane.Malha`](#arcanemalha) | `Malha` | 23 | Chamada entre serviços que não mente: cliente HTTP com prazo, retry com recuo e tremor, disjuntor de três estados, descoberta por nome e propagação automática do rastro do pedido. |
 | [`Arcane.Vitrine`](#arcanevitrine) | `Vitrine` | 113 | O framework de dashboards e aplicações de dados: você escreve um programa de cima para baixo e ele vira uma página web, com componentes, layout, gráficos em SVG, estado por sessão e cache — servido pelo Kiln. |
 | [`Arcane.API`](#arcaneapi) | `API` | 7 | A API do Kiln vista de fora: OpenAPI, coleção do Insomnia e do Postman, curl e a tabela em Markdown — tudo derivado das rotas registradas. |
 | [`Arcane.Decimal`](#arcanedecimal) | `Decimal / Exato` | 16 | Número decimal exato, para quando 0,1 + 0,2 precisa dar 0,3 — dinheiro, imposto, e todo número que alguém confere na mão. |
@@ -1771,6 +1772,50 @@ adopt Arcane.Lago as Lago
 | `tabelas(lago)` |
 | `tamanho(lago, tabela='')` |
 | `vacuo(lago)` |
+
+
+---
+
+## Arcane.Malha
+
+Chamada entre serviços que não mente: cliente HTTP com prazo, retry com recuo e tremor, disjuntor de três estados, descoberta por nome e propagação automática do rastro do pedido.
+
+```dataforge
+adopt Arcane.Malha as Malha
+```
+
+**Constantes**
+
+| Nome | Valor |
+|------|-------|
+| `RETENTAVEIS` | `[408, 425, 429, 500, 502, 503, 504]` |
+
+**Funções (22)**
+
+| Assinatura |
+|------------|
+| `Cliente(base, opcoes=None)` |
+| `Disjuntor(falhas=5, espera=30.0, nome='')` |
+| `Passo(nome, fazer, desfazer=None, escreve=True, chave=None)` |
+| `Saga(nome='saga', identificador=None, registro=None)` |
+| `cabecalhos_de_contexto()` |
+| `cliente(base, opcoes=None)` |
+| `comecar_contexto(rastro=None, origem='', extra=None)` |
+| `contexto()` |
+| `de(nome, opcoes=None)` |
+| `disjuntor(falhas=5, espera=30.0, nome='')` |
+| `onde(nome)` |
+| `padrao(opcoes)` |
+| `propagar(req, origem='')` |
+| `rastro()` |
+| `recuo(tentativa, base=0.2, teto=10.0, tremor=True)` |
+| `registrar(nome, base, opcoes=None)` |
+| `resumo()` |
+| `saga(nome='saga', identificador=None, registro=None)` |
+| `saude()` |
+| `servicos()` |
+| `terminar_contexto()` |
+| `vale_repetir(resposta)` |
 
 
 ---
