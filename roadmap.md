@@ -609,11 +609,26 @@ O que resta, em ordem de impacto.
 
 ### 4.1 — Confiança
 
-- **Verificação de exaustividade** em `match` sobre enum: avisar quando um membro
-  ficou de fora. É o item de melhor relação custo/benefício que sobrou.
-- **Contrato de trait**: falhar na declaração quando o blueprint não implementa
-  os métodos do trait, em vez de só na chamada.
-- **Generics** — `Cluster<T>`, `Vault<K,V>`, ações genéricas.
+- ~~**Exaustividade além do enum**~~ — **feito**: booleano, sequência
+  (`[x, ...resto]` sem `[]`) e a família de um `abstract blueprint`, e um
+  ramo com guarda deixou de contar como cobertura. Não desce em padrão
+  aninhado.
+- ~~**Verificação de exaustividade** em `match` sobre enum~~ — **feito**. O
+  `check` avisa quando um membro fica de fora, e nomeia qual.
+- ~~**Contrato de trait**~~ — **feito, e nas duas metades**. O interpretador
+  já cobrava na **declaração** (não na chamada), mas só em execução: um
+  blueprint que esquecia um método do trait passava no `check` e derrubava o
+  programa ao ser declarado — num projeto grande, o arquivo pode ser
+  importado só num ramo, e aí o erro chega em produção.
+  A conferência estática precisou de um conjunto de membros **diferente** do
+  que já existia: para `p.metodo` o método abstrato de um trait conta (o
+  trait promete que o membro existe, e quem escreve pode chamá-lo), e para o
+  contrato contar a promessa como cumprimento faz a regra aprovar
+  exatamente o que ela deveria recusar. Daí `_membros_implementados` ao lado
+  de `_membros_com_heranca`.
+- ~~**Ações e blueprints genéricos, com limite**~~ — **feito**: `<T>` e
+  `<T extends X>`, com o limite cobrado no `check` e em execução. Falta
+  `Cluster<T>` e `Vault<K,V>` como tipo de parâmetro.
 
 ### 4.2 — Ferramental
 
@@ -634,10 +649,22 @@ O que resta, em ordem de impacto.
 
 ### 5.0 — Runtime
 
-- **IR e VM de bytecode**: hoje é interpretador de árvore com compilação
-  para fechamentos (1,23× a 1,80×). Um protótipo de VM escrita em Python deu
-  7,9× e um de fechamentos com a semântica inteira deu 6,5× — mesma ordem de
-  grandeza. Medir de novo antes de investir.
+- **IR e VM de bytecode** — medido de novo, e a conclusão mudou de lugar.
+  O ganho da compilação para fechamentos sobre a árvore continua em 1,5× a
+  1,7×, mas **esse número não era o problema**: o perfil mostrou que o custo
+  dominante não estava no despacho de nó, e sim em trabalho repetido que
+  nenhuma VM removeria — 146 lambdas reconstruídos a cada acesso a método de
+  coleção, o pipeline fora do compilador, e a máquina de chamada refazendo
+  por chamada o que é da ação. Corrigidos esses quatro pontos, a carga de
+  coleção ficou **2,9× mais rápida** e a de método **1,3×**, sem uma linha
+  de bytecode.
+
+  Uma VM separada duplicaria a semântica inteira (7 mil linhas de
+  interpretador) para disputar o mesmo teto de ~6,5× que o protótipo de
+  fechamentos já mostrou, e cada divergência entre as duas viraria bug. O
+  caminho que resta com melhor relação custo/benefício continua sendo o que
+  o `compilador.py` já faz: cobrir mais nós (a lista está ordenada por
+  frequência real no arquivo) e encurtar o que roda por chamada.
 - **Cache de compilação** — hoje os fechamentos são montados a cada processo.
 - ~~**Empacotamento**: gerar um executável com runtime embutido.~~ **Feito**:
   `scripts/gerar_binario.py` e o fluxo `binarios` produzem um executável por
@@ -646,9 +673,13 @@ O que resta, em ordem de impacto.
 ### Concorrência (roadmap §8)
 
 - `Mutex`, `Semaphore`, `Atomic` — hoje só `channel` é seguro.
-- `receive` bloqueante.
+- ~~`receive` bloqueante~~ — **feito**, por argumento: `receive(ms)` e
+  `receive(void)`. O padrão continua não esperando, porque trocá-lo faria
+  programa existente travar em vez de falhar.
 - `TaskGroup` e cancelamento.
-- `parallel` tratando **blocos** em vez de instruções.
+- ~~`parallel` tratando **blocos** em vez de instruções~~ — **feito**, sem
+  palavra nova: um `thread:` dentro de `parallel` é uma tarefa. Instrução
+  solta continua sendo uma tarefa cada, então nada existente mudou.
 
 ### Web
 
@@ -667,10 +698,13 @@ O que resta, em ordem de impacto.
 - **HTTP/2 e TLS no Kiln** — o `http.server` do Python não tem, e
   implementá-los seria reescrever um servidor de produção. Em produção
   pública, nginx ou Caddy na frente.
-- **Depurador de mais de uma thread** — `dataforge debug` e `dataforge dap`
-  param, mostram e andam, mas sombreiam `execute` no interpretador inteiro:
-  parar uma thread de `thread`/`parallel` sem parar as outras exigiria estado
-  por thread no depurador. Falta também breakpoint condicional e watchpoint.
+- ~~**Depurador de mais de uma thread**~~ e ~~**breakpoint condicional**~~ —
+  **feitos**. O `dataforge dap` tem estado de parada POR THREAD: cada uma
+  para, mostra a própria pilha e anda sozinha, e `threads` lista as vivas.
+  A decisão de parar continua herdada de `depurador.py` — os atributos que
+  ela lê viraram propriedades que olham a thread atual, em vez de a
+  decisão ser copiada. Condição, contagem (`>= N`, `% N`) e logpoint valem
+  no terminal e no editor. Falta **watchpoint**.
 - **Sessão compartilhada entre processos** — hoje a sessão da Vitrine vive na
   memória do processo, o que limita a aplicação a um processo com proxy na
   frente. Escalar horizontalmente exige um armazenamento comum primeiro.
