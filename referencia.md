@@ -142,6 +142,7 @@ uma atribuição comum.
 | `:=` | atribuição | atribui/declara |
 | `+=` `-=` `*=` `/=` `%=` | atribuição | composta |
 | `+` `-` `*` `/` `%` | aritmética | soma, subtração, produto, divisão, resto |
+| `+` com `String` | texto | concatena e converte o outro lado — **menos `void`** (ver 2.3) |
 | `**` | aritmética | potência (associa à direita) |
 | `~/` | aritmética | divisão inteira (**preferido**) |
 | `??` | coalescência | valor alternativo quando o esquerdo é `void` |
@@ -195,7 +196,87 @@ out 2 + 3 * 4      # 14
 > `2 ** 3 ** 2  // 512, não 64` seria lida como divisão inteira — exatamente a
 > ambiguidade descrita a seguir.
 
-### 2.3 A ambiguidade de `//`
+### 2.3 O que `+` faz com texto
+
+Quando **um dos lados é `String`**, o outro é convertido e o resultado é
+texto. É o que faz `"Versão: " + 2` dar `"Versão: 2"` sem pedir `str()`.
+
+| Outro lado | `"n: " + x` | Por quê |
+|---|---|---|
+| `Integer` `Float` | `"n: 42"` | o valor existe, e o texto dele é o que se quis dizer |
+| `Boolean` | `"n: yes"` | idem |
+| `Cluster` `Vault` | `"n: [1, 2]"` | a forma desenhada, a mesma do `out` |
+| `record` `enum` | o `toString`, se houver | o tipo decide como se lê |
+| **`Void`** | **erro** | ver abaixo |
+
+**`void` não vira texto.** `"Olá, " + nome`, com `nome` valendo `void`,
+devolvia `"Olá, void"` — a palavra `void` impressa onde devia ir o nome,
+numa nota fiscal ou num e-mail, e sem nada denunciando. É o `"undefined"`
+do JavaScript, e era a única armadilha de corrupção silenciosa que nem o
+`check` nem o `lint` mencionavam. Um campo que não veio não é texto: é
+uma pergunta sem resposta, e a linguagem recusa respondê-la por você.
+
+As duas saídas, e a diferença entre elas é intenção:
+
+```dataforge
+nome := v["nome"] ?? void
+
+out "Olá, " + nome              // erro: Cannot add Void to text
+out "Olá, " + (nome ?? "")      // "Olá, " — o padrão é escolha sua
+out $"Olá, {nome}"              // "Olá, void" — pedido explícito
+```
+
+A **interpolação continua desenhando `void`**, e isso não é incoerência:
+`$"{x}"` é um pedido para mostrar o que houver ali, útil em log e em
+depuração. `+` entre texto e um valor ausente é quase sempre um descuido.
+O `check` acusa quando consegue provar que o lado é `Void`; quando não
+consegue — um parâmetro sem tipo, por exemplo — cala, e o erro aparece na
+execução.
+
+### 2.4 Divisão, resto e arredondamento com negativos
+
+As três operam como em Python, e as três surpreendem quem espera o
+comportamento de C ou de JavaScript. Nenhuma estava documentada, e as três
+dão resultado **errado em silêncio** para quem supôs o contrário.
+
+| Conta | DataForge | O que muita gente espera |
+|---|---|---|
+| `-7 ~/ 2` | **-4** | -3 |
+| `7 ~/ -2` | **-4** | -3 |
+| `-7 % 2` | **1** | -1 |
+| `7 % -2` | **-1** | 1 |
+| `round(2.5)` | **2.0** | 3.0 |
+| `round(3.5)` | **4.0** | 4.0 |
+
+**`~/` arredonda para baixo, não para o zero.** `-7 ~/ 2` é -4 porque -3,5
+arredondado para baixo é -4. Para truncar em direção ao zero, divida e
+converta: `int(-7 / 2)` dá -3.
+
+**O resto tem o sinal do DIVISOR.** `-7 % 2` é 1, não -1. A vantagem é que
+`x % n` com `n` positivo nunca é negativo, o que faz `lista[i % len(lista)]`
+funcionar com `i` negativo sem nenhuma guarda. A desvantagem é que o resto
+de um negativo não é o que o papel sugere.
+
+Os dois combinam: `a` é sempre `(a ~/ b) * b + (a % b)`.
+
+**`round` arredonda o empate para o PAR.** `round(2.5)` é 2,0 e
+`round(3.5)` é 4,0 — não é um bug, é o arredondamento bancário, que evita o
+viés de sempre subir. Ela devolve **`Float`** mesmo sem casas decimais.
+
+Para dinheiro, nenhuma das três serve: use `Arcane.Decimal`, que arredonda
+meio-para-cima, não passa por flutuante nenhum, e **recusa** ser misturado
+com `Float` numa conta — para a garantia não se perder em silêncio.
+
+```dataforge
+adopt Arcane.Decimal as Dec
+
+out -7 ~/ 2                  # -4
+out -7 % 2                   # 1
+out round(2.5)               # 2.0
+out Dec.texto(Dec.arredondar(Dec.de("2.5"), 0))   # "3"
+```
+
+### 2.5 A ambiguidade de `//`
 
 `//` abre comentário **e** é divisão inteira. O lexer decide pelo contexto:
 
@@ -212,7 +293,7 @@ x := 3  // marcar como caminho  // comentário
 
 **Recomendação: use `~/`.** É inequívoco e não depende de heurística.
 
-### 2.4 Comparações encadeadas
+### 2.6 Comparações encadeadas
 
 ```dataforge
 nota := 7.5
@@ -222,7 +303,7 @@ out 1 smaller 5 smaller 10
 
 O termo do meio é avaliado uma única vez.
 
-### 2.5 Formato na interpolação
+### 2.7 Formato na interpolação
 
 Depois de `:` vem o formato, com a mini-linguagem do `format`:
 
@@ -236,7 +317,7 @@ O `:` que abre o corpo de um `lambda` ou de um `morph` **não** é
 formato: ele é distinguido por não ter espaço depois e por o que vem
 em seguida parecer formato.
 
-### 2.6 `is not` e `not in`
+### 2.8 `is not` e `not in`
 
 `is not` e `not in` são **um operador cada**, escritos com dois tokens:
 
@@ -305,6 +386,30 @@ Um nome não listado é tratado como nome de blueprint, e a checagem percorre a
 cadeia de herança.
 
 Regra de conveniência: **um `Integer` é aceito onde se espera `Float`**.
+
+#### Tipo de outro módulo
+
+Um tipo importado é nomeado como qualquer coisa importada — com o apelido do
+módulo na frente — e vale nas **quatro** posições:
+
+```dataforge
+adopt ./modelo as M
+
+action criar(id: Integer) -> M.Pedido:      // retorno
+    yield M.Pedido(id, "x")
+
+action ler(p: M.Pedido) -> Integer:         // parâmetro
+    yield p.id
+
+record Envelope:
+    pedido: M.Pedido                        // campo
+
+p: M.Pedido := criar(7)                     // variável
+```
+
+A verificação compara o **último segmento**: um record não carrega o apelido de
+quem o importou, e o mesmo `Pedido` é `M.Pedido` aqui, `P.Pedido` no vizinho e
+`Pedido` em casa.
 
 ### 3.3 Conversão
 
@@ -406,7 +511,15 @@ fluxo, não erros.
 [ async ] action nome "(" [ params ] ")" [ "->" tipo ] ":" bloco
 ```
 
-Um parâmetro é `nome [":" tipo] [":=" padrão]`.
+Um parâmetro é `nome [":" tipo] [":=" padrão]`, e a lista obedece a duas
+regras, as duas conferidas na leitura do arquivo:
+
+| Recusado | Porque |
+|---|---|
+| o mesmo nome duas vezes (`action f(a, a)`) | o primeiro não tem como ser lido, e `f(1, 2)` devolveria o segundo |
+| um parâmetro sem padrão depois de um com padrão (`action f(a := 1, b)`) | o padrão nunca poderia ser usado: `f(2)` deixa `b` sem valor e `f(2, 3)` passa por cima dele |
+
+Valem também para `lambda`.
 
 ### 6.2 Retorno
 
@@ -449,6 +562,17 @@ resultado recebe a ação.
 
 Vários `mark` empilham; o mais próximo da ação é aplicado primeiro.
 
+Um decorador que devolve `void` **não** substitui a ação: é o que permite usar
+`mark` como anotação — registrar uma rota, um teste, uma permissão — sem
+embrulhar nada.
+
+Uma ação expõe dois membros, e só esses dois:
+
+| Membro | O quê |
+|--------|-------|
+| `.name` | o nome com que foi declarada |
+| `.aridade` | quantos parâmetros ela declara |
+
 ### 6.6 defer
 
 ```ebnf
@@ -456,13 +580,84 @@ defer:
     bloco
 ```
 
-Agenda o bloco para rodar na saída da ação, em ordem LIFO. Erros dentro de um
-bloco `defer` são descartados.
+Agenda o bloco para rodar na saída da ação, em ordem LIFO — inclusive quando a
+ação sai por erro, que é o ponto de um `defer`.
 
-### 6.7 Limite de recursão
+**Onde ele é escrito não muda quando roda.** Um `defer` dentro de um `cycle`,
+de um `persist` ou de um `given` roda na saída da **ação**, e não no fim do
+bloco. No topo do programa, roda no fim do programa; dentro de um `thread:` ou
+de uma tarefa de `parallel`, ao fim daquele trabalho — é onde o recurso deixa
+de ser usado.
 
-O interpretador aborta em **1000 quadros** com `StackOverflowError_`, nomeando a
-ação. Recursões legítimas de até ~900 níveis funcionam.
+O bloco roda no escopo em que foi escrito, e isso decide o que ele vê: o `i` de
+um `cycle` é uma variável **por volta**, e cada `defer` vê o seu; o `n` de um
+`persist` é uma variável só, que o corpo muda, e todos veem o valor final.
+
+Um erro **dentro** de um `defer` não é descartado. Todos os `defer` rodam mesmo
+que um falhe, e depois:
+
+| A ação saiu… | O que viaja |
+|---|---|
+| normalmente | o erro do `defer` — o primeiro, com os demais em `.outros` |
+| por um erro | o erro **original**, com os do `defer` anexados em `.outros` |
+
+A segunda linha é a que exige cuidado: levantar o erro do fechamento no lugar do
+original apagaria a causa, e quem lê veria "não consegui fechar o arquivo" sem
+nunca ver por que a gravação falhou. É o modelo do `try-with-resources` do Java.
+
+Até esta versão o erro era descartado nos dois casos. Isso fazia um arquivo não
+fechado, ou uma transação não desfeita, terminar o programa com código 0.
+
+### 6.7 Limite de recursão, e as duas saídas
+
+O interpretador aborta em **1000 quadros** com `StackOverflowError_`,
+nomeando a ação. Recursões de até ~900 níveis funcionam sem nada
+especial.
+
+Mas esse teto é atingido por recursão **legítima** com frequência: uma
+travessia de árvore de cinco mil nós não tem nada de infinita. Há duas
+saídas, e a mensagem do erro traz as duas.
+
+#### 1. Chamada de cauda — sem teto
+
+Quando `yield f(…)` é o retorno **inteiro** — não há nada depois dele —
+o quadro existe só para repassar o resultado. A linguagem reconhece isso
+e reusa **um** quadro:
+
+```dataforge
+action somar(n, acc):
+    given n is 0:
+        yield acc
+    yield somar(n - 1, acc + n)
+
+out somar(200000, 0)        // duzentos mil níveis, sem estourar
+```
+
+O acumulador é o que torna a cauda possível: `yield 1 + f(n - 1)` **não**
+é cauda, porque a soma acontece depois da chamada.
+
+Quatro casos são recusados pela análise, antes de rodar: se há `defer`
+na ação, se o `yield` está dentro de `monitor`, se a recursão é indireta
+(`f`→`g`→`f`), e se **todo** `yield` da ação é cauda — a última porque
+uma ação que nunca devolve viraria um laço mudo, pior que o erro.
+
+#### 2. Um `cycle` com pilha explícita
+
+Vale para qualquer travessia, e não pede que a chamada seja cauda:
+
+```dataforge
+action total(raiz):
+    pilha := [raiz]
+    soma := 0
+    persist len(pilha) bigger 0:
+        atual := pop(pilha)
+        soma := soma + atual.valor
+        cycle f in atual.filhos:
+            pilha.append(f)
+    yield soma
+```
+
+A pilha vira um `Cluster` no monte, e o teto passa a ser a memória.
 
 ---
 
@@ -500,6 +695,29 @@ Se ambos existirem, os parâmetros são atribuídos primeiro e depois `setup` ro
 
 Instanciar: `spawn Nome(args)` ou `forge Nome(args)`. Chamar o blueprint
 diretamente (`Nome(args)`) também instancia.
+
+**O `spawn` leva o nome e os argumentos, e para ali.** O que vem depois é
+aplicado sobre a instância, então `spawn B().f()` constrói e depois chama —
+como se lê. Até a 1.0.0 ele consumia a cadeia inteira, e a mesma linha
+significava `spawn (B().f())`.
+
+```dataforge
+blueprint Caixa(n):
+    action dobro():
+        yield self.n * 2
+
+out spawn Caixa(4).dobro()      // 8
+out spawn Caixa(4).n            // 4
+```
+
+### 7.2.1 Um nome por membro
+
+Dois métodos com o mesmo nome no mesmo blueprint, ou um método com o nome de
+um campo do cabeçalho, são recusados pela análise. Nos dois casos o segundo
+vence em silêncio, e o outro não tem como ser chamado — no caso do campo, é o
+campo que vence, e o método existe no arquivo sem nunca rodar.
+
+Sobrescrever na filha é outra coisa, e continua sendo o ponto da herança.
 
 ### 7.3 self e root
 
@@ -748,6 +966,23 @@ out dados
 
 Sem valor inicial, `distill` usa o primeiro elemento como acumulador.
 
+#### Dentro de `lambda`, com parênteses
+
+O corpo do lambda liga **mais forte** que `>>`:
+
+```dataforge
+f := lambda => (xs >> morph x: x * 2)      // certo
+```
+
+Sem os parênteses, `lambda => xs >> morph …` canaliza o **lambda**, e
+não `xs` — o erro diz isso e mostra a linha corrigida.
+
+#### A fonte precisa ser uma coleção
+
+`Cluster`, `Vault` (as chaves), `String` (os caracteres), `range`, e
+qualquer objeto iterável — inclusive um que venha da ponte para o
+Python. `void` é recusado com a saída: `(x ?? []) >> morph …`.
+
 ---
 
 ## 10. Módulos
@@ -767,6 +1002,33 @@ Não encontrando, dispara `ImportError_` listando os módulos disponíveis.
 `relay` documenta o que o módulo exporta. Na implementação atual, todas as
 variáveis de nível superior do arquivo ficam acessíveis pelo alias.
 
+### 10.1 O que o analisador confere através do `adopt`
+
+O `check` lê o outro arquivo — com lexer e parser, **sem executá-lo** — e
+cobra três coisas antes de rodar:
+
+```dataforge
+adopt ./pedido as P
+
+p := P.criar(1, "Ana")
+
+out p.clientte        // erro: Record 'P.Pedido' has no field 'clientte'
+q := P.criar(1)       // erro: 'P.criar' takes 2 argument(s), got 1
+P.apagar(1)           // erro: module 'P' has no 'apagar'
+P.criar(1, 2)         // erro: Parameter 'cliente' expects String, got Integer
+```
+
+O primeiro e o último dependem das declarações de tipo: uma ação que
+declara `-> Tipo` leva o tipo **através** da fronteira, e uma que declara
+`param: Tipo` tem cada argumento conferido — com a linha onde ela foi
+declarada, no outro arquivo. Sem as declarações, o analisador cala: ele
+só acusa o que consegue provar.
+
+Ele também cala, inteiro, quando a **superfície** do outro arquivo não é
+confiável: se ele não compila, se há ciclo de import, se a profundidade
+(4 níveis) acaba, ou se o `relay` nomeia algo que só existe em execução.
+Um falso alarme é pior que um silêncio.
+
 ---
 
 ## 11. Concorrência
@@ -777,16 +1039,50 @@ variáveis de nível superior do arquivo ficam acessíveis pelo alias.
 | `await <expr>` | espera a tarefa terminar e entrega o valor |
 | `await [t1, t2, …]` | espera **todas**; elas já corriam desde a chamada |
 | `thread: bloco` | roda o bloco em uma thread daemon |
-| `parallel: bloco` | roda **cada instrução** do bloco em uma thread, com join de 30 s |
+| `parallel: bloco` | roda cada **tarefa** numa thread e **espera todas**; um erro volta na linha do bloco |
+| `thread:` dentro de `parallel` | agrupa instruções numa tarefa só, que roda em ordem |
 | `channel nome` | cria uma fila FIFO com trava |
-| `nome.send(v)` / `nome.receive()` | escreve / lê (devolve `void` se vazio) |
+| `nome.send(v)` / `nome.receive()` | escreve / lê — devolve `void` **na hora** se vazio |
+| `nome.receive(ms)` | espera até `ms` milissegundos pelo próximo item; expirado, `void` |
+| `nome.receive(void)` | espera o que for preciso |
+| `len(nome)` / `nome.pending()` | quantos itens há agora — uma foto, não uma promessa |
 | `wait <ms>` | dorme pelo número de milissegundos |
 | `stream <expr>` | cria um stream a partir de uma coleção |
 | `observe v in fonte: bloco` | itera a fonte; aceita `halt` e `skip` |
 | `pulse <evento>[, <dado>]` | emite um evento |
 
-> **Limitação:** não há sincronização automática de variáveis compartilhadas
-> entre threads. `channel` é a via segura.
+> **Limitação:** não há sincronização automática de variáveis
+> compartilhadas entre threads. Medido: quatro threads somando 20 mil
+> vezes na mesma variável entregaram **40.425 de 80.000**.
+>
+> `x := x + 1` são três passos — ler, somar, escrever — e o
+> interpretador pode trocar de thread entre eles. O `check` **avisa**
+> (`escrita-concorrente`) quando um `thread` ou `parallel` escreve num
+> nome que vem de fora.
+>
+> As três saídas, em `Arcane.Concurrent`:
+
+| Para | Use |
+|------|-----|
+| somar | `contador()` — atômico |
+| um bloco inteiro | `mutex()` |
+| passar o valor adiante | `canal()`, ou o `channel` da linguagem |
+
+```dataforge
+adopt Arcane.Concurrent as Conc
+
+c := Conc.contador()
+
+action bater():
+    cycle i from 1 to 2000:
+        c.somar(1)
+
+parallel:
+    bater()
+    bater()
+
+assert c.valor() is 4000      // fecha, sempre
+```
 
 ---
 
@@ -973,12 +1269,20 @@ pedir um item. Por isso um `persist yes:` com `emit` dentro é legítimo.
 | Método | Devolve |
 |--------|---------|
 | `to_cluster()` | tudo, como lista |
-| `take(n)` | os `n` primeiros |
+| `take(n)` | os `n` primeiros, como lista |
 | `next()` | o próximo, ou `void` |
 | `count()` | quantos itens |
 | `first()` | o primeiro, ou `void` |
-| `map(f)` / `filter(f)` | lista |
+| `map(f)` / `filter(f)` | **outro stream**, preguiçoso |
+| `skip(n)` | outro stream, sem os `n` primeiros |
+| `enumerate([inicio])` | outro stream, de `[i, item]` |
+| `reduce(f[, inicial])` | os itens dobrados num valor só |
 | `reset()` | reinicia o `next()` |
+
+`map`, `filter`, `skip` e `enumerate` não produzem item nenhum: devolvem um
+stream, encadeiam entre si, e valem num stream infinito. Quem materializa é
+`take(n)` ou `to_cluster()` — e `take(n)` para no item `n`, sem produzir o
+seguinte.
 
 `yield` dentro de um `stream action` encerra a produção. Fora de um
 `stream action`, `emit` é um alias histórico de `out`.
@@ -1035,11 +1339,13 @@ decl_static    = "static" identificador ":=" expressão ;
 
 decl_ação      = { "mark" "@" identificador [ "(" args ")" ] }
                  [ "async" | "stream" ] "action" identificador
-                 "(" [ params ] ")" [ "->" tipo ] ":" bloco ;
+                 [ genéricos ] "(" [ params ] ")" [ "->" tipo ] ":" bloco ;
+genéricos      = "<" genérico { "," genérico } ">" ;
+genérico       = Identificador [ "extends" tipo ] ;
 params         = param { "," param } ;
 param          = identificador [ ":" tipo ] [ ":=" expressão ] ;
 
-decl_blueprint = "blueprint" identificador [ "(" nomes ")" ]
+decl_blueprint = "blueprint" identificador [ genéricos ] [ "(" nomes ")" ]
                  [ "extends" nomes ] [ "with" nomes ] ":" bloco ;
 decl_trait     = "trait" identificador ":" bloco ;
 
