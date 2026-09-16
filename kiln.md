@@ -134,6 +134,24 @@ que SQLite funcione, mas estado compartilhado em memória não é sincronizado �
 duas threads escrevendo na mesma variável podem perder atualizações. Um teste
 que roda tudo na mesma thread **não** pega isso.
 
+Medido: seis pedidos simultâneos numa rota que lê, espera e escreve entregaram
+**1 de 6**. O `check` avisa (`escrita-concorrente`), e a saída é uma linha:
+
+```dataforge
+adopt Arcane.Concurrent as Conc
+
+visitas := Conc.contador()          // em vez de  visitas := {"n": 0}
+
+server app on 8080:
+    route GET "/":
+        // 'somar' incrementa e devolve o novo valor, dentro da trava.
+        respond json {"visitas": visitas.somar(1)}
+```
+
+Para um bloco inteiro, `Conc.mutex()` com `acquire`/`release` e um `defer` para
+o release. `append` não precisa de trava — ele é atômico (medido: 20.000 de
+20.000 com quatro threads); o que perde é ler-modificar-escrever.
+
 **3. A ordem do middleware importa.** `rate_limit` antes de `auth`: na ordem
 inversa, um pedido barrado pelo `auth` nunca é contado — e quem está martelando
 a porta com credenciais inválidas é justamente quem você quer limitar.
